@@ -1,72 +1,39 @@
-import base64
-import io
-import urllib.request
-from pathlib import Path
 from typing import Optional
 
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# ---------------------------------------------------------------------------
-# MediaPipe Tasks API (mediapipe >= 0.10.x)
-# ---------------------------------------------------------------------------
-MODEL_PATH = Path(__file__).parent / "hand_landmarker.task"
-MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/"
-    "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+# MediaPipe initialises here — also consumed by routes/predict.py
+from services.mediapipe_service import (
+    MEDIAPIPE_AVAILABLE,
+    decode_image,
+    hand_landmarker,
 )
+from routes.predict import router as predict_router
 
-MEDIAPIPE_AVAILABLE = False
-hand_landmarker = None
-
-try:
-    import cv2
-    from PIL import Image
-    import mediapipe as mp
-    from mediapipe.tasks import python as mp_python
-    from mediapipe.tasks.python import vision as mp_vision
-
-    if not MODEL_PATH.exists():
-        print("Downloading MediaPipe hand landmarker model (~25 MB)…")
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-        print("Model downloaded.")
-
-    _base = mp_python.BaseOptions(model_asset_path=str(MODEL_PATH))
-    _opts = mp_vision.HandLandmarkerOptions(
-        base_options=_base,
-        running_mode=mp_vision.RunningMode.IMAGE,
-        num_hands=2,
-        min_hand_detection_confidence=0.5,
-        min_hand_presence_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-    hand_landmarker = mp_vision.HandLandmarker.create_from_options(_opts)
-    MEDIAPIPE_AVAILABLE = True
-    print("MediaPipe ready (Tasks API).")
-except Exception as _err:
-    print(f"MediaPipe not available: {_err}")
-
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
-app = FastAPI(title="TSL System API", description="Tanzania Sign Language Detection API")
+app = FastAPI(
+    title="TSL System API",
+    description="Tanzania Sign Language Detection — AI-powered (Transformer) with bilingual output",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# AI routes: POST /predict  and  WS /ws/detect
+app.include_router(predict_router)
+
 
 # ---------------------------------------------------------------------------
-# Pydantic models
+# Pydantic models (kept for backward-compat /detect endpoint)
 # ---------------------------------------------------------------------------
 class FrameRequest(BaseModel):
-    image: str  # base64 data-URL or raw base64 JPEG
+    image: str
 
 
 class HandLandmark(BaseModel):
@@ -76,60 +43,37 @@ class HandLandmark(BaseModel):
 
 
 class DetectionResult(BaseModel):
-    detected: bool
-    gesture: Optional[str]
+    detected:   bool
+    gesture:    Optional[str]
+    english:    Optional[str]   = None
+    swahili:    Optional[str]   = None
     confidence: float
-    landmarks: list[list[HandLandmark]]
-    num_hands: int
+    landmarks:  list[list[HandLandmark]]
+    num_hands:  int
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Rule-based finger-state classifier (legacy fallback for /detect)
 # ---------------------------------------------------------------------------
-def decode_image(b64: str) -> np.ndarray:
-    if "," in b64:
-        b64 = b64.split(",", 1)[1]
-    raw = base64.b64decode(b64)
-    pil = Image.open(io.BytesIO(raw)).convert("RGB")
-    return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
-
-
-def get_finger_states(lms: list) -> list[bool]:
-    """lms is a flat list of NormalizedLandmark with .x .y .z"""
+def _finger_states(lms: list) -> list[bool]:
     thumb_up = lms[4].x < lms[3].x
-    tips_pips = [(8, 6), (12, 10), (16, 14), (20, 18)]
-    fingers = [thumb_up]
-    for tip, pip in tips_pips:
-        fingers.append(lms[tip].y < lms[pip].y)
-    return fingers  # [thumb, index, middle, ring, pinky]
+    return [thumb_up] + [lms[tip].y < lms[pip].y for tip, pip in [(8,6),(12,10),(16,14),(20,18)]]
 
 
-def classify_gesture(lms: list) -> tuple[str, float]:
-    t, i, m, r, p = get_finger_states(lms)
-
-    if all([t, i, m, r, p]):
-        return "Open Hand — Habari / Hello", 0.88
-    if not any([t, i, m, r, p]):
-        return "Fist — Simama / Stop", 0.88
-    if i and not m and not r and not p:
-        return "One / Pointing", 0.82
-    if i and m and not r and not p:
-        return "Two / Peace / V", 0.82
-    if i and m and r and not p:
-        return "Three", 0.82
-    if i and m and r and p and not t:
-        return "Four", 0.82
-    if t and not i and not m and not r and not p:
-        return "Thumbs Up — Nzuri / Good", 0.84
-    if t and not i and not m and not r and p:
-        return "I Love You — Nakupenda", 0.85
-    if not t and not i and not m and not r and p:
-        return "Pinky — Ahadi / Promise", 0.78
-    if t and i and not m and not r and not p:
-        return "L-Shape / Pistol", 0.75
-    if not t and i and not m and not r and p:
-        return "Rock On", 0.78
-    return "Unknown Gesture", 0.40
+def _classify_gesture(lms: list) -> tuple[str, float]:
+    t, i, m, r, p = _finger_states(lms)
+    if all([t, i, m, r, p]):                              return "Hello / Habari", 0.88
+    if not any([t, i, m, r, p]):                          return "Stop / Simama", 0.88
+    if i and not m and not r and not p:                   return "One / Moja", 0.82
+    if i and m and not r and not p:                       return "Peace / Amani", 0.82
+    if i and m and r and not p:                           return "Three / Tatu", 0.82
+    if i and m and r and p and not t:                     return "Four / Nne", 0.82
+    if t and not i and not m and not r and not p:         return "Good / Nzuri", 0.84
+    if t and not i and not m and not r and p:             return "I Love You / Nakupenda", 0.85
+    if not t and not i and not m and not r and p:         return "Promise / Ahadi", 0.78
+    if t and i and not m and not r and not p:             return "L-Shape / Umbo-L", 0.75
+    if not t and i and not m and not r and p:             return "Rock On / Pumzika", 0.78
+    return "Unknown / Haijulikani", 0.40
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +81,16 @@ def classify_gesture(lms: list) -> tuple[str, float]:
 # ---------------------------------------------------------------------------
 @app.get("/")
 def read_root():
-    return {"message": "TSL System API", "status": "running", "mediapipe": MEDIAPIPE_AVAILABLE}
+    return {
+        "message":   "TSL System API",
+        "status":    "running",
+        "mediapipe": MEDIAPIPE_AVAILABLE,
+        "endpoints": {
+            "legacy_http": "POST /detect",
+            "ai_http":     "POST /predict",
+            "ai_ws":       "WS   /ws/detect",
+        },
+    }
 
 
 @app.get("/health")
@@ -147,12 +100,18 @@ def health_check():
 
 @app.post("/detect", response_model=DetectionResult)
 async def detect_gesture(frame: FrameRequest):
+    """
+    Legacy endpoint — uses AI inference when torch is available,
+    falls back to rule-based classification otherwise.
+    Kept for backward compatibility with the existing frontend polling.
+    """
     if not MEDIAPIPE_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="MediaPipe not ready. Check server logs.",
-        )
+        raise HTTPException(status_code=503, detail="MediaPipe not ready. Check server logs.")
+
     try:
+        import cv2
+        import mediapipe as mp
+
         bgr = decode_image(frame.image)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -167,11 +126,24 @@ async def detect_gesture(frame: FrameRequest):
             [HandLandmark(x=lm.x, y=lm.y, z=lm.z) for lm in hand]
             for hand in result.hand_landmarks
         ]
-        gesture, confidence = classify_gesture(result.hand_landmarks[0])
+
+        # Try AI inference first
+        try:
+            from services.ai_service import predict_from_landmarks
+            buf: list = []
+            pred = predict_from_landmarks(result.hand_landmarks, buf, session_id="legacy")
+            gesture   = f"{pred['english']} / {pred['swahili']}"
+            confidence = pred["confidence"]
+            english, swahili = pred["english"], pred["swahili"]
+        except Exception:
+            gesture, confidence = _classify_gesture(result.hand_landmarks[0])
+            english = swahili = None
 
         return DetectionResult(
             detected=True,
             gesture=gesture,
+            english=english,
+            swahili=swahili,
             confidence=confidence,
             landmarks=all_landmarks,
             num_hands=len(result.hand_landmarks),

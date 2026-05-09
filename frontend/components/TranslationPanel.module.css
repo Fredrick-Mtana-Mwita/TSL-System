@@ -1,0 +1,95 @@
+.confidenceBar {
+  width: var(--confidence-width, 0%);
+  transition: width 500ms ease-in-out;
+}
+
+/* Percentage-based width classes for confidence bar */
+.pct0 { --confidence-width: 0%; }
+.pct5 { --confidence-width: 5%; }
+.pct10 { --confidence-width: 10%; }
+.pct15 { --confidence-width: 15%; }
+.pct20 { --confidence-width: 20%; }
+.pct25 { --confidence-width: 25%; }
+.pct30 { --confidence-width: 30%; }
+.pct35 { --confidence-width: 35%; }
+.pct40 { --confidence-width: 40%; }
+.pct45 { --confidence-width: 45%; }
+.pct50 { --confidence-width: 50%; }
+.pct55 { --confidence-width: 55%; }
+.pct60 { --confidence-width: 60%; }
+.pct65 { --confidence-width: 65%; }
+.pct70 { --confidence-width: 70%; }
+.pct75 { --confidence-width: 75%; }
+.pct80 { --confidence-width: 80%; }
+.pct85 { --confidence-width: 85%; }
+.pct90 { --confidence-width: 90%; }
+.pct95 { --confidence-width: 95%; }
+.pct100 { --confidence-width: 100%; }
+
+.historyItem {
+  animation: fade-up 400ms ease-out forwards;
+  animation-delay: var(--animation-delay, 0ms);
+}
+
+/* Dynamic animation delays for history items (0-49 index) */
+.delay0 { --animation-delay: 0ms; }
+.delay1 { --animation-delay: 20ms; }
+.delay2 { --animation-delay: 40ms; }
+.delay3 { --animation-delay: 60ms; }
+.delay4 { --animation-delay: 80ms; }
+.delay5 { --animation-delay: 100ms; }
+.delay6 { --animation-delay: 120ms; }
+.delay7 { --animation-delay: 140ms; }
+.delay8 { --animation-delay: 160ms; }
+.delay9 { --animation-delay: 180ms; }
+.delay10 { --animation-delay: 200ms; }
+.delay11 { --animation-delay: 220ms; }
+.delay12 { --animation-delay: 240ms; }
+.delay13 { --animation-delay: 260ms; }
+.delay14 { --animation-delay: 280ms; }
+.delay15 { --animation-delay: 300ms; }
+.delay16 { --animation-delay: 320ms; }
+.delay17 { --animation-delay: 340ms; }
+.delay18 { --animation-delay: 360ms; }
+.delay19 { --animation-delay: 380ms; }
+.delay20 { --animation-delay: 400ms; }
+.delay21 { --animation-delay: 420ms; }
+.delay22 { --animation-delay: 440ms; }
+.delay23 { --animation-delay: 460ms; }
+.delay24 { --animation-delay: 480ms; }
+.delay25 { --animation-delay: 500ms; }
+.delay26 { --animation-delay: 520ms; }
+.delay27 { --animation-delay: 540ms; }
+.delay28 { --animation-delay: 560ms; }
+.delay29 { --animation-delay: 580ms; }
+.delay30 { --animation-delay: 600ms; }
+.delay31 { --animation-delay: 620ms; }
+.delay32 { --animation-delay: 640ms; }
+.delay33 { --animation-delay: 660ms; }
+.delay34 { --animation-delay: 680ms; }
+.delay35 { --animation-delay: 700ms; }
+.delay36 { --animation-delay: 720ms; }
+.delay37 { --animation-delay: 740ms; }
+.delay38 { --animation-delay: 760ms; }
+.delay39 { --animation-delay: 780ms; }
+.delay40 { --animation-delay: 800ms; }
+.delay41 { --animation-delay: 820ms; }
+.delay42 { --animation-delay: 840ms; }
+.delay43 { --animation-delay: 860ms; }
+.delay44 { --animation-delay: 880ms; }
+.delay45 { --animation-delay: 900ms; }
+.delay46 { --animation-delay: 920ms; }
+.delay47 { --animation-delay: 940ms; }
+.delay48 { --animation-delay: 960ms; }
+.delay49 { --animation-delay: 980ms; }
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
